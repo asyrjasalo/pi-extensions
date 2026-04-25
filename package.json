@@ -41,6 +41,7 @@
       "./extensions/poly-notify/index.ts",
       "./extensions/oracle.ts",
       "./extensions/plan-mode.ts",
+      "./extensions/session-name.ts",
       "./extensions/repoprompt-mcp/src/index.ts",
       "./extensions/reverse-thinking.ts",
       "./extensions/rp-native-tools-lock/index.ts",
