@@ -65,16 +65,19 @@ export default function (pi: ExtensionAPI) {
         attachEditor(ctx);
     });
 
-    // Provide alt+v raw clipboard paste (the only raw-paste feature you wanted)
-    pi.registerShortcut("alt+v", {
-        description: "Paste clipboard text raw into editor (bypasses [paste #..] markers)",
-        handler: async (ctx) => {
-            if (!ctx.hasUI) return;
-            if (!activeEditor) {
-                ctx.ui.notify("Editor not ready", "warning");
-                return;
-            }
-            await activeEditor.pasteClipboardRawAtCursor();
-        },
-    });
+    // Raw clipboard paste — shortcut configurable via rawPasteShortcut in config.json (default: alt+v)
+    const config = loadConfig();
+    if (config.rawPasteShortcut) {
+        pi.registerShortcut(config.rawPasteShortcut as Parameters<typeof pi.registerShortcut>[0], {
+            description: "Paste clipboard text raw into editor (bypasses [paste #..] markers)",
+            handler: async (ctx) => {
+                if (!ctx.hasUI) return;
+                if (!activeEditor) {
+                    ctx.ui.notify("Editor not ready", "warning");
+                    return;
+                }
+                await activeEditor.pasteClipboardRawAtCursor();
+            },
+        });
+    }
 }

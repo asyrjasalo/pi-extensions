@@ -5,16 +5,19 @@ import { fileURLToPath } from "node:url";
 export type EditorEnhancementsConfig = {
     doubleEscapeCommand?: string | null;
     commandRemap?: Record<string, string>;
+    rawPasteShortcut?: string | null;
 };
 
 export type EditorEnhancementsRuntimeConfig = {
     doubleEscapeCommand: string | null;
     commandRemap: Record<string, string>;
+    rawPasteShortcut: string | null;
 };
 
 const DEFAULT_CONFIG: EditorEnhancementsRuntimeConfig = {
     doubleEscapeCommand: null,
     commandRemap: {},
+    rawPasteShortcut: "alt+v",
 };
 
 export function normalizeCommandName(value: unknown): string | null {
@@ -41,6 +44,12 @@ export function normalizeCommandRemap(value: unknown): Record<string, string> {
     return result;
 }
 
+export function normalizeShortcut(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim().toLowerCase();
+    return trimmed || null;
+}
+
 export function loadConfig(): EditorEnhancementsRuntimeConfig {
     const extensionDir = path.dirname(fileURLToPath(import.meta.url));
     const configPath = path.join(extensionDir, "config.json");
@@ -54,6 +63,7 @@ export function loadConfig(): EditorEnhancementsRuntimeConfig {
         return {
             doubleEscapeCommand: normalizeCommandName(parsed.doubleEscapeCommand),
             commandRemap: normalizeCommandRemap(parsed.commandRemap),
+            rawPasteShortcut: normalizeShortcut(parsed.rawPasteShortcut),
         };
     } catch {
         return DEFAULT_CONFIG;
