@@ -3,6 +3,5 @@
   "commandRemap": {
     "tree": "anycopy",
     "resume": "switch-session"
-  },
-  "rawPasteShortcut": "ctrl+p"
+  }
 }
