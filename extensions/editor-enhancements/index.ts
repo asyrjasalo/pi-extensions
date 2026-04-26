@@ -12,7 +12,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { loadConfig } from "./config.js";
+import { loadConfig, resolveAutocompleteMaxVisible } from "./config.js";
 import { EnhancedEditor } from "./enhanced-editor.js";
 
 function resolveDoubleEscapeCommand(
@@ -46,6 +46,7 @@ export default function (pi: ExtensionAPI) {
 
         activeContext = ctx;
         const config = loadConfig();
+        const autocompleteMaxVisible = resolveAutocompleteMaxVisible(ctx.cwd);
         const doubleEscapeCommand = resolveDoubleEscapeCommand(pi, ctx, config.doubleEscapeCommand);
 
         ctx.ui.setEditorComponent((tui, theme, keybindings) => {
@@ -56,6 +57,7 @@ export default function (pi: ExtensionAPI) {
                     return activeContext.isIdle() && !activeContext.hasPendingMessages();
                 },
                 commandRemap: config.commandRemap,
+                autocompleteMaxVisible,
             });
             return activeEditor;
         });

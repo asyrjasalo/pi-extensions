@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +14,9 @@ export type EditorEnhancementsRuntimeConfig = {
     commandRemap: Record<string, string>;
     rawPasteShortcut: string | null;
 };
+
+const AUTOCOMPLETE_MIN_VISIBLE = 3;
+const AUTOCOMPLETE_MAX_VISIBLE = 20;
 
 const DEFAULT_CONFIG: EditorEnhancementsRuntimeConfig = {
     doubleEscapeCommand: null,
@@ -68,4 +72,39 @@ export function loadConfig(): EditorEnhancementsRuntimeConfig {
     } catch {
         return DEFAULT_CONFIG;
     }
+}
+
+function parseAutocompleteMaxVisible(value: unknown): number | undefined {
+    if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+    const rounded = Math.round(value);
+    return Math.min(
+        AUTOCOMPLETE_MAX_VISIBLE,
+        Math.max(AUTOCOMPLETE_MIN_VISIBLE, rounded),
+    );
+}
+
+function readJsonObject(filePath: string): Record<string, unknown> | undefined {
+    try {
+        const text = fs.readFileSync(filePath, "utf-8");
+        const parsed = JSON.parse(text) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return parsed as Record<string, unknown>;
+        }
+    } catch {
+        // Ignore malformed/missing settings; fallback to defaults.
+    }
+    return undefined;
+}
+
+export function resolveAutocompleteMaxVisible(cwd: string): number | undefined {
+    const globalSettingsPath = path.join(os.homedir(), ".pi", "agent", "settings.json");
+    const projectSettingsPath = path.join(cwd, ".pi", "settings.json");
+
+    const globalSettings = readJsonObject(globalSettingsPath);
+    const projectSettings = readJsonObject(projectSettingsPath);
+
+    const globalValue = parseAutocompleteMaxVisible(globalSettings?.autocompleteMaxVisible);
+    const projectValue = parseAutocompleteMaxVisible(projectSettings?.autocompleteMaxVisible);
+
+    return projectValue ?? globalValue;
 }

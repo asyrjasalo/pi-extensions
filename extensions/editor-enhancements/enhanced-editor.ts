@@ -19,6 +19,7 @@ type EnhancedEditorOptions = {
     doubleEscapeCommand: string | null;
     canTriggerDoubleEscapeCommand: () => boolean;
     commandRemap: Record<string, string>;
+    autocompleteMaxVisible?: number;
 };
 
 const DOUBLE_ESCAPE_WINDOW_MS = 500;
@@ -143,7 +144,9 @@ export class EnhancedEditor extends CustomEditor {
         private options: EnhancedEditorOptions,
         private keybindingsManager: KeybindingsManager = keybindings,
     ) {
-        super(tui, theme, keybindings);
+        super(tui, theme, keybindings, {
+            autocompleteMaxVisible: options.autocompleteMaxVisible,
+        });
         this.tuiInstance = tui;
         this.shell = findCompletionShell();
 
