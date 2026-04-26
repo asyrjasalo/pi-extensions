@@ -15,6 +15,12 @@ export type EditorEnhancementsRuntimeConfig = {
     rawPasteShortcut: string | null;
 };
 
+type PromptsmithSettings = {
+    enabled?: boolean;
+    shortcutEnabled?: boolean;
+    shortcutKey?: string;
+};
+
 const AUTOCOMPLETE_MIN_VISIBLE = 3;
 const AUTOCOMPLETE_MAX_VISIBLE = 20;
 
@@ -107,4 +113,18 @@ export function resolveAutocompleteMaxVisible(cwd: string): number | undefined {
     const projectValue = parseAutocompleteMaxVisible(projectSettings?.autocompleteMaxVisible);
 
     return projectValue ?? globalValue;
+}
+
+export function resolvePromptsmithShortcut(): string | null {
+    const settingsPath = path.join(os.homedir(), ".pi", "agent", "promptsmith-settings.json");
+
+    try {
+        if (!fs.existsSync(settingsPath)) return null;
+        const parsed = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as PromptsmithSettings;
+        if (parsed.enabled !== true) return null;
+        if (parsed.shortcutEnabled !== true) return null;
+        return normalizeShortcut(parsed.shortcutKey) ?? null;
+    } catch {
+        return null;
+    }
 }

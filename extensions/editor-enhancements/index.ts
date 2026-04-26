@@ -12,7 +12,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { loadConfig, resolveAutocompleteMaxVisible } from "./config.js";
+import { loadConfig, resolveAutocompleteMaxVisible, resolvePromptsmithShortcut } from "./config.js";
 import { EnhancedEditor } from "./enhanced-editor.js";
 
 function resolveDoubleEscapeCommand(
@@ -40,6 +40,7 @@ function resolveDoubleEscapeCommand(
 export default function (pi: ExtensionAPI) {
     let activeContext: ExtensionContext | null = null;
     let activeEditor: EnhancedEditor | null = null;
+    let promptsmithShortcutRegistered = false;
 
     const attachEditor = (ctx: ExtensionContext) => {
         if (!ctx.hasUI) return;
@@ -65,6 +66,25 @@ export default function (pi: ExtensionAPI) {
 
     pi.on("session_start", (_event, ctx) => {
         attachEditor(ctx);
+
+        if (promptsmithShortcutRegistered) return;
+
+        const promptsmithShortcut = resolvePromptsmithShortcut();
+        const hasPromptsmithCommand = pi.getCommands().some((command) => command.name === "promptsmith");
+        if (!promptsmithShortcut || !hasPromptsmithCommand) return;
+
+        pi.registerShortcut(promptsmithShortcut as Parameters<typeof pi.registerShortcut>[0], {
+            description: "Enhance current editor prompt",
+            handler: async (shortcutCtx) => {
+                if (!shortcutCtx.hasUI) return;
+                if (!activeEditor || !activeEditor.onSubmit) {
+                    shortcutCtx.ui.notify("Editor not ready", "warning");
+                    return;
+                }
+                activeEditor.onSubmit("/promptsmith");
+            },
+        });
+        promptsmithShortcutRegistered = true;
     });
 
     // Raw clipboard paste — shortcut configurable via rawPasteShortcut in config.json (default: alt+v)
@@ -82,4 +102,5 @@ export default function (pi: ExtensionAPI) {
             },
         });
     }
+
 }
