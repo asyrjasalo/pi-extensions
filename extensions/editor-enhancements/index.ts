@@ -13,7 +13,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { loadConfig, resolveAutocompleteMaxVisible, resolvePromptsmithShortcut } from "./config.js";
-import { EnhancedEditor } from "./enhanced-editor.js";
+import { EnhancedEditor, patchWithEnhancedFeatures, type EnhancedEditorOptions } from "./enhanced-editor.js";
 
 function resolveDoubleEscapeCommand(
     pi: ExtensionAPI,
@@ -39,7 +39,7 @@ function resolveDoubleEscapeCommand(
 
 export default function (pi: ExtensionAPI) {
     let activeContext: ExtensionContext | null = null;
-    let activeEditor: EnhancedEditor | null = null;
+    let activeEditor: { onSubmit?: (text: string) => void; pasteClipboardRawAtCursor(): Promise<void> } | null = null;
     let promptsmithShortcutRegistered = false;
 
     const attachEditor = (ctx: ExtensionContext) => {
@@ -50,18 +50,48 @@ export default function (pi: ExtensionAPI) {
         const autocompleteMaxVisible = resolveAutocompleteMaxVisible(ctx.cwd);
         const doubleEscapeCommand = resolveDoubleEscapeCommand(pi, ctx, config.doubleEscapeCommand);
 
-        ctx.ui.setEditorComponent((tui, theme, keybindings) => {
-            activeEditor = new EnhancedEditor(tui, theme, keybindings, ctx.ui, {
-                doubleEscapeCommand,
-                canTriggerDoubleEscapeCommand: () => {
-                    if (!activeContext) return false;
-                    return activeContext.isIdle() && !activeContext.hasPendingMessages();
-                },
-                commandRemap: config.commandRemap,
-                autocompleteMaxVisible,
+        const editorOptions: EnhancedEditorOptions = {
+            doubleEscapeCommand,
+            canTriggerDoubleEscapeCommand: () => {
+                if (!activeContext) return false;
+                return activeContext.isIdle() && !activeContext.hasPendingMessages();
+            },
+            commandRemap: config.commandRemap,
+            autocompleteMaxVisible,
+        };
+
+        // Intercept future setEditorComponent calls so enhancements survive
+        // when pi-prompt-suggester (or any other extension) replaces the editor.
+        const originalSetEditorComponent = ctx.ui.setEditorComponent.bind(ctx.ui);
+        let isOurInstall = false;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (ctx.ui as any).setEditorComponent = (factory: Parameters<typeof ctx.ui.setEditorComponent>[0]) => {
+            if (isOurInstall) {
+                originalSetEditorComponent(factory);
+                return;
+            }
+            if (!factory) {
+                originalSetEditorComponent(undefined);
+                activeEditor = null;
+                return;
+            }
+            originalSetEditorComponent((tui, theme, keybindings) => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const base = factory(tui, theme, keybindings) as any;
+                patchWithEnhancedFeatures(base, tui, keybindings, ctx.ui, editorOptions);
+                activeEditor = base;
+                return base;
             });
-            return activeEditor;
+        };
+
+        isOurInstall = true;
+        ctx.ui.setEditorComponent((tui, theme, keybindings) => {
+            activeEditor = new EnhancedEditor(tui, theme, keybindings, ctx.ui, editorOptions);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return activeEditor as any;
         });
+        isOurInstall = false;
     };
 
     pi.on("session_start", (_event, ctx) => {

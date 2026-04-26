@@ -15,7 +15,7 @@ import {
     type ShellInfo,
 } from "./shell-completions.js";
 
-type EnhancedEditorOptions = {
+export type EnhancedEditorOptions = {
     doubleEscapeCommand: string | null;
     canTriggerDoubleEscapeCommand: () => boolean;
     commandRemap: Record<string, string>;
@@ -280,4 +280,125 @@ export class EnhancedEditor extends CustomEditor {
         const before = line[cursor.col - 1];
         return before === " " || before === "\t" || before === undefined;
     }
+}
+
+/**
+ * Apply EnhancedEditor behaviours to any existing CustomEditor instance in-place.
+ * Used when another extension (e.g. pi-prompt-suggester) replaces the editor component
+ * after editor-enhancements has already set up its interception.
+ */
+export function patchWithEnhancedFeatures(
+    editor: CustomEditor,
+    tui: TUI,
+    keybindings: KeybindingsManager,
+    ui: ExtensionUIContext,
+    options: EnhancedEditorOptions,
+): void {
+    const shell = findCompletionShell();
+    let openingPicker = false;
+    let wrappedAutocompleteProvider = false;
+    let lastEscapeTime = 0;
+    let _onSubmitOriginal: ((text: string) => void) | undefined;
+
+    Object.defineProperty(editor, "onSubmit", {
+        get: (): ((text: string) => void) | undefined => {
+            const original = _onSubmitOriginal;
+            if (!original) return undefined;
+            return (text: string) => {
+                const trimmed = text.trimStart();
+                if (!trimmed.startsWith("/")) { original(text); return; }
+                const match = trimmed.match(/^\/([^\s:]+)(.*)/s);
+                if (!match) { original(text); return; }
+                const [, cmd, rest] = match;
+                const target = options.commandRemap[cmd!];
+                original(target ? `/${target}${rest}` : text);
+            };
+        },
+        set: (fn: ((text: string) => void) | undefined) => {
+            _onSubmitOriginal = fn;
+        },
+        configurable: true,
+        enumerable: true,
+    });
+
+    const origSetAutocomplete = editor.setAutocompleteProvider?.bind(editor);
+    if (origSetAutocomplete) {
+        editor.setAutocompleteProvider = (provider: AutocompleteProvider): void => {
+            if (!wrappedAutocompleteProvider && provider) {
+                wrappedAutocompleteProvider = true;
+                origSetAutocomplete(wrapProviderWithShellAndAtFiltering(provider, shell));
+                return;
+            }
+            origSetAutocomplete(provider);
+        };
+    }
+
+    const origHandleInput = editor.handleInput.bind(editor);
+    editor.handleInput = (data: string): void => {
+        if (openingPicker) return;
+
+        const canDoubleEscape = Boolean(
+            options.doubleEscapeCommand &&
+            keybindings.matches(data, "app.interrupt") &&
+            !editor.isShowingAutocomplete() &&
+            !editor.getText().trim() &&
+            options.canTriggerDoubleEscapeCommand(),
+        );
+        if (canDoubleEscape) {
+            const now = Date.now();
+            if (now - lastEscapeTime >= DOUBLE_ESCAPE_WINDOW_MS) {
+                lastEscapeTime = now;
+            } else {
+                lastEscapeTime = 0;
+                const command = options.doubleEscapeCommand;
+                if (command) {
+                    const submitFn = (editor as unknown as { onSubmit?: (text: string) => void }).onSubmit;
+                    submitFn?.(`/${command}`);
+                }
+            }
+            return;
+        }
+
+        if (!keybindings.matches(data, "app.interrupt")) {
+            lastEscapeTime = 0;
+        }
+
+        if (data === "@") {
+            const cursor = editor.getCursor();
+            const line = editor.getLines()[cursor.line] ?? "";
+            const before = cursor.col === 0 ? undefined : line[cursor.col - 1];
+            if (cursor.col === 0 || before === " " || before === "\t" || before === undefined) {
+                openingPicker = true;
+                if (editor.isShowingAutocomplete()) origHandleInput("\x1b");
+                openFilePicker(ui).then((refs) => {
+                    if (refs) {
+                        editor.insertTextAtCursor(refs + " ");
+                        tui.requestRender();
+                    }
+                }).finally(() => {
+                    openingPicker = false;
+                });
+                return;
+            }
+        }
+
+        origHandleInput(data);
+    };
+
+    if (options.autocompleteMaxVisible !== undefined) {
+        editor.setAutocompleteMaxVisible?.(options.autocompleteMaxVisible);
+    }
+
+    (editor as unknown as { pasteClipboardRawAtCursor(): Promise<void> }).pasteClipboardRawAtCursor =
+        async (): Promise<void> => {
+            let text: string | undefined;
+            try {
+                text = await Clipboard.getText();
+            } catch {
+                text = undefined;
+            }
+            if (!text) return;
+            editor.insertTextAtCursor(text.replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
+            tui.requestRender();
+        };
 }
