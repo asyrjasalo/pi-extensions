@@ -6,14 +6,41 @@ import {
     type EditorTheme,
     type TUI,
 } from "@mariozechner/pi-tui";
-import * as Clipboard from "@mariozechner/clipboard";
-
 import { openFilePicker } from "./file-picker.js";
 import {
     findCompletionShell,
     getShellCompletions,
     type ShellInfo,
 } from "./shell-completions.js";
+
+// @mariozechner/clipboard ships a platform-specific native binding as an
+// optionalDependency (e.g. @mariozechner/clipboard-linux-arm64-musl). The
+// pi-coding-agent skill installer runs `npm install --omit=dev`, which is
+// known to intermittently skip optional deps due to npm/cli#4828, so the
+// binding can be absent on first install. Loading the module eagerly via
+// `import` would then crash the entire extension at registration time, even
+// though only `pasteClipboardRawAtCursor()` (alt+v) actually needs it. Load
+// it lazily on first use and degrade gracefully if it is unavailable.
+type ClipboardModule = typeof import("@mariozechner/clipboard");
+let clipboardLoadPromise: Promise<ClipboardModule | undefined> | undefined;
+
+async function loadClipboard(): Promise<ClipboardModule | undefined> {
+    if (!clipboardLoadPromise) {
+        clipboardLoadPromise = (async () => {
+            try {
+                return await import("@mariozechner/clipboard");
+            } catch (err) {
+                console.warn(
+                    "[editor-enhancements] @mariozechner/clipboard unavailable; alt+v raw paste disabled:",
+                    err instanceof Error ? err.message : err,
+                );
+                return undefined;
+            }
+        })();
+    }
+    return clipboardLoadPromise;
+}
+
 
 export type EnhancedEditorOptions = {
     doubleEscapeCommand: string | null;
@@ -202,6 +229,9 @@ export class EnhancedEditor extends CustomEditor {
     }
 
     async pasteClipboardRawAtCursor(): Promise<void> {
+        const Clipboard = await loadClipboard();
+        if (!Clipboard) return;
+
         let text: string | undefined;
         try {
             text = await Clipboard.getText();
@@ -391,6 +421,8 @@ export function patchWithEnhancedFeatures(
 
     (editor as unknown as { pasteClipboardRawAtCursor(): Promise<void> }).pasteClipboardRawAtCursor =
         async (): Promise<void> => {
+            const Clipboard = await loadClipboard();
+            if (!Clipboard) return;
             let text: string | undefined;
             try {
                 text = await Clipboard.getText();
