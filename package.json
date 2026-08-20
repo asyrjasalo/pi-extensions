@@ -48,6 +48,7 @@
       "./extensions/sandbox/index.ts",
       "./extensions/session-ask/index.ts",
       "./extensions/session-switch/index.ts",
+      "./extensions/status-line/index.ts",
       "./extensions/tools/index.ts",
       "./extensions/usage-bar.ts"
     ],
